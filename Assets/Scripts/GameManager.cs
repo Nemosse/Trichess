@@ -1,5 +1,5 @@
 using System;
-// using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine.SceneManagement;
@@ -9,6 +9,8 @@ using UnityEngine.SceneManagement;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.Playables;
+using Unity.VisualScripting;
 
 
 public class GameManager : MonoBehaviour
@@ -37,16 +39,19 @@ public class GameManager : MonoBehaviour
     [SerializeField] private GameObject[] redBoard = new GameObject[32];
     // [SerializeField] private List<PieceField> movableField;
 
-    [Header("Time")]
-    [SerializeField] private int[] playerTime = new int[3];
-
     [Header("UI")]
+    [SerializeField] private GameObject pawnPromotePanel;
+    private bool togglePromotePawn;
     [SerializeField] private TextMeshProUGUI currentPlayerUI;
     [SerializeField] private GameObject gameResetTextUI;
     private TextMeshProUGUI gameResetTextUISub;
     public float fadeInDuration = 0.0f; // Time to fade in
     public float stayDuration = 4.0f;   // Time to stay visible
     public float fadeOutDuration = 3.0f; // Time to fade out
+    private Players promotePawnColor;
+    private PieceField pawnPromotePieceField = null;
+
+
 
     private float startTime;
     private static bool isFadingIn = false;
@@ -61,19 +66,32 @@ public class GameManager : MonoBehaviour
     [SerializeField] public Button backwardButton;
     [SerializeField] public Button forwardButton;
 
+    [Header("PawnPromote")]
+    public Pieces blueQueen;
+    public Pieces blueKnight;
+    public Pieces blueRook;
+    public Pieces blueBishop;
+    public Pieces greenQueen;
+    public Pieces greenKnight;
+    public Pieces greenRook;
+    public Pieces greenBishop;
+    public Pieces redQueen;
+    public Pieces redKnight;
+    public Pieces redRook;
+    public Pieces redBishop;
+
 
     void Start()
     {
         lastMousePosition = Input.mousePosition;
         currentPlayerUI.text = $"   Current Player : <color={GetPlayerColor((int)currentTurnPlayer)}>Player {(int)currentTurnPlayer}</color>";
 
-
-        // Make the text initially invisible
-
     }
 
     void Awake()
     {
+        pawnPromotePanel.SetActive(false);
+
         checkmatedTextUi = gameOverTextUI.gameObject.transform.GetChild(0).GetComponent<TextMeshProUGUI>();
         gameOverTextUI.gameObject.SetActive(false);
 
@@ -467,9 +485,18 @@ public class GameManager : MonoBehaviour
         PieceField newPieceMoverField = tempRecord.GetVariablePieceField(1);
         PieceField oldRookCastleField = tempRecord.GetVariablePieceField(2);
         PieceField newRookCastleField = tempRecord.GetVariablePieceField(3);
+        Pieces pawnPromotionPiece = tempRecord.GetVariablePiece(2);
         bool firstMove = tempRecord.GetFirstMove();
 
-        newPieceMoverField.SetPiece(moverPiece);
+        if (pawnPromotionPiece != null)
+        {
+            newPieceMoverField.SetPiece(pawnPromotionPiece);
+        }
+        else
+        {
+            newPieceMoverField.SetPiece(moverPiece);
+        }
+
         oldPieceMoverField.SetPiece(null);
         newPieceMoverField.GetPiece().SetCastlable(firstMove);
         UpdatePieceFieldImage(oldPieceMoverField);
@@ -510,6 +537,39 @@ public class GameManager : MonoBehaviour
             }
         }
         UpdateButton();
+    }
+
+    public void UpdatePromotePawnUIColor()
+    {
+        Debug.Log(promotePawnColor);
+
+        if (promotePawnColor == Players.Player1)
+        {
+            pawnPromotePanel.GetComponent<Image>().color = new Color(120f / 255f, 200f / 255f, 250f / 255f, 1f);
+
+            for (int i = 0; i < pawnPromotePanel.transform.childCount; i++)
+            {
+                pawnPromotePanel.transform.GetChild(i).GetComponent<Image>().color = new Color(150f / 255f, 210f / 255f, 255f / 255f, 1f);
+            }
+        }
+        else if (promotePawnColor == Players.Player2)
+        {
+            pawnPromotePanel.GetComponent<Image>().color = new Color(120f / 255f, 250f / 255f, 120f / 255f, 1f);
+
+            for (int i = 0; i < pawnPromotePanel.transform.childCount; i++)
+            {
+                pawnPromotePanel.transform.GetChild(i).GetComponent<Image>().color = new Color(160f / 255f, 255f / 255f, 150f / 255f, 1f);
+            }
+        }
+        else if (promotePawnColor == Players.Player3)
+        {
+            pawnPromotePanel.GetComponent<Image>().color = new Color(250f / 255f, 120 / 255f, 120 / 255f, 1f);
+
+            for (int i = 0; i < pawnPromotePanel.transform.childCount; i++)
+            {
+                pawnPromotePanel.transform.GetChild(i).GetComponent<Image>().color = new Color(255f / 255f, 150f / 255f, 160f / 255f, 1f);
+            }
+        }
     }
     #endregion
 
@@ -610,43 +670,6 @@ public class GameManager : MonoBehaviour
         if (piece.GetPiece() != null)
         {
             (bool isKingInCheck, List<PieceField> kingMovableField, bool isBlockable, List<PieceField> blockableField, List<PieceField> nonMovablePiece, List<PieceField> nonMovablePiece_movableField, List<Players> playerCheck) = IsKingInCheck(piece.GetPiece().GetPlayerOwner());
-
-
-
-            // if (isKingInCheck == true && kingMovableField.Count <= 0 && isBlockable == false && blockableField.Count <= 0)
-            // {
-            //     if (playerCheck.Count == 1)
-            //     {
-            //         GameOver(playerCheck[0], piece.GetPiece().GetPlayerOwner());
-            //     }
-            //     else if (playerCheck.Count == 2)
-            //     {
-
-            //         if ((int)playerCheck[0] < (int)playerCheck[1])
-            //         {
-            //             if (currentTurnPlayer == Players.Player1 || currentTurnPlayer == Players.Player3)
-            //             {
-            //                 GameOver(playerCheck[0], piece.GetPiece().GetPlayerOwner());
-            //             }
-            //             else
-            //             {
-            //                 GameOver(playerCheck[1], piece.GetPiece().GetPlayerOwner());
-            //             }
-            //         }
-            //         else if ((int)playerCheck[0] > (int)playerCheck[1])
-            //         {
-            //             if (currentTurnPlayer == Players.Player1 || currentTurnPlayer == Players.Player3)
-            //             {
-            //                 GameOver(playerCheck[1], piece.GetPiece().GetPlayerOwner());
-            //             }
-            //             else
-            //             {
-            //                 GameOver(playerCheck[0], piece.GetPiece().GetPlayerOwner());
-            //             }
-            //         }
-            //     }
-            //     return null;
-            //}
 
             switch (piece.GetPiece().GetPieceType())
             {
@@ -900,6 +923,8 @@ public class GameManager : MonoBehaviour
             PieceField mover = startingPosition;
             PieceField taken = endingPosition;
 
+            Pieces pawnPromotionPiece = null;
+
             PieceField oldRook = null;
             PieceField newRook = null;
 
@@ -919,6 +944,14 @@ public class GameManager : MonoBehaviour
             && endingPosition.GetColor() != mover.GetPiece().GetPlayerOwner())
             {
                 //promotePawn
+                promotePawnColor = mover.GetPiece().GetPlayerOwner();
+                togglePromotePawn = true;
+                isPlayable = false;
+                endingPosition.SetPiece(mover.GetPiece());
+                pawnPromotePieceField = endingPosition;
+
+                StartCoroutine(WaitForPawnPromote(() => { Debug.Log("Pawn promotion is complete!"); }));
+
             }
             else
             {
@@ -943,7 +976,6 @@ public class GameManager : MonoBehaviour
                     }
                 }
             }
-
 
             if (mover.GetPiece().GetPieceType() == PieceTypes.King
             && mover.GetColumn() == 4
@@ -1038,7 +1070,7 @@ public class GameManager : MonoBehaviour
             }
 
 
-            History.Push(new Record(tempStartingPos, moverPiece, tempEndingPos, takenPiece, beforeCaslte, tempOldRook, tempNewRook));
+            History.Push(new Record(tempStartingPos, moverPiece, tempEndingPos, takenPiece, beforeCaslte, tempOldRook, tempNewRook, pawnPromotionPiece));
             UpdateButton();
 
             turn += 1;
@@ -1464,4 +1496,125 @@ public class GameManager : MonoBehaviour
                 return "white"; // Default color
         }
     }
+
+
+    public IEnumerator SetPawnPromoteActive()
+    {
+        if (togglePromotePawn == true)
+        {
+            if (promotePawnColor != Players.Empty)
+            {
+                UpdatePromotePawnUIColor();
+                pawnPromotePanel.SetActive(true);
+            }
+            else
+            {
+                yield break; // End the coroutine if there's nothing to do
+            }
+        }
+        else
+        {
+            yield break; // End the coroutine if promotion is not active
+        }
+    }
+
+    private IEnumerator WaitForPawnPromote(Action action)
+    {
+        yield return StartCoroutine(SetPawnPromoteActive());
+
+        while (togglePromotePawn)
+        {
+            yield return null;
+        }
+
+        action.Invoke();
+    }
+
+    public void PromotePawnAction(int i)
+    {
+        switch (i)
+        {
+            case 0:
+                if (promotePawnColor == Players.Player1)
+                {
+                    pawnPromotePieceField.SetPiece(blueQueen);
+                }
+                else if (promotePawnColor == Players.Player2)
+                {
+                    pawnPromotePieceField.SetPiece(greenQueen);
+                }
+                else if (promotePawnColor == Players.Player3)
+                {
+                    pawnPromotePieceField.SetPiece(redQueen);
+                }
+                break;
+            case 1:
+                if (promotePawnColor == Players.Player1)
+                {
+                    pawnPromotePieceField.SetPiece(blueKnight);
+                }
+                else if (promotePawnColor == Players.Player2)
+                {
+                    pawnPromotePieceField.SetPiece(greenKnight);
+                }
+                else if (promotePawnColor == Players.Player3)
+                {
+                    pawnPromotePieceField.SetPiece(redKnight);
+                }
+                break;
+            case 2:
+                if (promotePawnColor == Players.Player1)
+                {
+                    pawnPromotePieceField.SetPiece(blueRook);
+                }
+                else if (promotePawnColor == Players.Player2)
+                {
+                    pawnPromotePieceField.SetPiece(greenRook);
+                }
+                else if (promotePawnColor == Players.Player3)
+                {
+                    pawnPromotePieceField.SetPiece(redRook);
+                }
+                break;
+            case 3:
+                if (promotePawnColor == Players.Player1)
+                {
+                    pawnPromotePieceField.SetPiece(blueBishop);
+                }
+                else if (promotePawnColor == Players.Player2)
+                {
+                    pawnPromotePieceField.SetPiece(greenBishop);
+                }
+                else if (promotePawnColor == Players.Player3)
+                {
+                    pawnPromotePieceField.SetPiece(redBishop);
+                }
+                break;
+            default:
+                return;
+        }
+        var newPiece = pawnPromotePieceField.GetPiece();
+        if (newPiece == null)
+        {
+            Debug.LogError("Pawn promotion piece is null");
+        }
+        else
+        {
+            History.history[History.history.Count - 1].SetPromotionPawnNewPiece(newPiece);
+        }
+
+        var lastRecord = History.history[History.history.Count - 1];
+        lastRecord.SetPromotionPawnNewPiece(newPiece);
+        History.history[History.history.Count - 1] = lastRecord;
+        UpdatePieceFieldImage(pawnPromotePieceField);
+
+        pawnPromotePieceField = null;
+
+        promotePawnColor = Players.Empty;
+        togglePromotePawn = false;
+        isPlayable = true;
+
+        pawnPromotePanel.SetActive(false);
+    }
+
 }

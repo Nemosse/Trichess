@@ -29,6 +29,7 @@ public struct Record
     private Pieces takenPiece;
     private PieceField oldRookCastleField;
     private PieceField newRookCastleField;
+    private Pieces pawnPromotionPiece;
     private bool firstMove;
 
     public Record(
@@ -38,7 +39,8 @@ public struct Record
         Pieces takenPiece,
         bool firstMove = false,
         PieceField oldRookCastleField = null,
-        PieceField newRookCastleField = null
+        PieceField newRookCastleField = null,
+        Pieces pawnPromotionPiece = null
     )
     {
         this.oldPieceMoverField = oldPieceMoverField;
@@ -48,6 +50,7 @@ public struct Record
         this.oldRookCastleField = oldRookCastleField;
         this.newRookCastleField = newRookCastleField;
         this.firstMove = firstMove;
+        this.pawnPromotionPiece = pawnPromotionPiece;
     }
 
     public PieceField GetVariablePieceField(int i)
@@ -80,8 +83,18 @@ public struct Record
                 return moverPiece;
             case 1:
                 return takenPiece;
+            case 2:
+                return pawnPromotionPiece;
             default:
                 return null;
         }
     }
+
+    public void SetPromotionPawnNewPiece(Pieces newPiece)
+    {
+        Debug.Log("Setting promotion pawn new piece");
+        pawnPromotionPiece = newPiece;
+        Debug.Log("Promotion pawn new piece set: " + newPiece);
+    }
+
 }
