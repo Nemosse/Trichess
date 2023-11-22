@@ -1,6 +1,9 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
 using System.Linq;
 using UnityEngine.SceneManagement;
 
@@ -17,7 +20,7 @@ public class GameManager : MonoBehaviour
 {
     [Header("GameSetting")]
     [SerializeField] private bool gameOver;
-    public bool isPlayable = true;
+    public bool isPlayable = false;
     private Vector3 lastMousePosition;
     public static GameManager instance;
     public List<PieceField> movableFields;
@@ -25,6 +28,10 @@ public class GameManager : MonoBehaviour
     public PieceField player1KingPieceField;
     public PieceField player2KingPieceField;
     public PieceField player3KingPieceField;
+    public string machineIP;
+
+    public bool test = true;
+    public bool LanMode = false;
 
 
     [Header("Turn")]
@@ -41,9 +48,10 @@ public class GameManager : MonoBehaviour
 
     [Header("UI")]
     [SerializeField] private GameObject pawnPromotePanel;
-    private bool togglePromotePawn;
+    public bool togglePromotePawn;
     [SerializeField] private TextMeshProUGUI currentPlayerUI;
     [SerializeField] private GameObject gameResetTextUI;
+    public GameObject lobbyUI;
     private TextMeshProUGUI gameResetTextUISub;
     public float fadeInDuration = 0.0f; // Time to fade in
     public float stayDuration = 4.0f;   // Time to stay visible
@@ -65,6 +73,7 @@ public class GameManager : MonoBehaviour
     [Header("Button")]
     [SerializeField] public Button backwardButton;
     [SerializeField] public Button forwardButton;
+    [SerializeField] public Button passTurnButton;
 
     [Header("PawnPromote")]
     public Pieces blueQueen;
@@ -80,16 +89,59 @@ public class GameManager : MonoBehaviour
     public Pieces redRook;
     public Pieces redBishop;
 
+    [Header("Server")]
+    public Server server;
+    public bool gameStarted;
+    public bool[] playerManualList = new bool[3] { true, true, true };
+    public PieceField pieceFieldServerCheck;
+    public List<string> boardState = new List<string>();
+    public bool dataGatheringCompleted = true;
+    public bool dataGatheringBoardPlayerCompleted = true;
+    public string sendBoardTurnDatasSring = "";
+    public int gsCurrentClient;
+    public string gsFrom = "";
+    public string gsTo = "";
+    public PieceField gsMover;
+    public PieceField gsMoveTo;
+    public string gsMovableField = "";
+    public List<string> movableFieldsList = new List<string>();
+    public string movableFieldsListJson = "";
+    public string kingMovableFieldJson = "";
+    public string blockableFieldJson = "";
+    public string whoCheckedJson = "";
+    public Players gsMyPiecePlayer = Players.Empty;
+    public int gsPromotionInt = -1;
+    bool pawnPromoteActive = false;
 
     void Start()
     {
+
         lastMousePosition = Input.mousePosition;
-        currentPlayerUI.text = $"   Current Player : <color={GetPlayerColor((int)currentTurnPlayer)}>Player {(int)currentTurnPlayer}</color>";
+        currentPlayerUI.text = "Lobby";
+
+        IPAddress[] localIPs = Dns.GetHostAddresses(Dns.GetHostName());
+
+        foreach (IPAddress ipAddress in localIPs)
+        {
+            if (ipAddress.AddressFamily == AddressFamily.InterNetwork) // IPv4 addresses
+            {
+                machineIP = $"ws://{ipAddress}:8080/";
+            }
+        }
+
+        lobbyUI.transform.GetChild(3).GetChild(0).GetComponent<TextMeshProUGUI>().text = machineIP;
 
     }
 
     void Awake()
     {
+        instance = this;
+
+        passTurnButton.interactable = false;
+
+        lobbyUI.transform.GetChild(5).gameObject.SetActive(false);
+
+        lobbyUI.transform.GetChild(3).gameObject.SetActive(false);
         pawnPromotePanel.SetActive(false);
 
         checkmatedTextUi = gameOverTextUI.gameObject.transform.GetChild(0).GetComponent<TextMeshProUGUI>();
@@ -104,7 +156,7 @@ public class GameManager : MonoBehaviour
         gameResetTextUISub.color = new Color(originalColor.r, originalColor.g, originalColor.b, 0f);
         // Debug.Log(MoveStepCheck(GetPieceField(BoardPosition.BC2), new Direction[] { Direction.Forward, Direction.Left }).name);
 
-        instance = this;
+
 
         for (int i = 0; i < blueBoard.Length; i++)
         {
@@ -251,9 +303,13 @@ public class GameManager : MonoBehaviour
 
     public void ChangeCurrentTurnPlayer()
     {
+        turn += 1;
+        passTurnButton.interactable = true;
+
         if (gameOver)
         {
             currentTurnPlayer = Players.Empty;
+            passTurnButton.interactable = false;
         }
         else
         {
@@ -266,6 +322,35 @@ public class GameManager : MonoBehaviour
                 currentTurnPlayer = (Players)((int)currentTurnPlayer + 1);
             }
 
+        }
+
+        if (LanMode)
+        {
+            passTurnButton.interactable = false;
+            isPlayable = false;
+            for (int i = 0; i < Server.instance.connectedClients.Count; i++)
+            {
+                if (Server.instance.connectedClients[i].isLocal == true && Server.instance.connectedClients[i].Player == currentTurnPlayer)
+                {
+                    if (!togglePromotePawn)
+                    {
+                        isPlayable = true;
+                        passTurnButton.interactable = true;
+                    }
+                }
+            }
+
+            for (int i = 0; i < Server.instance.connectedClients.Count; i++)
+            {
+                if (Server.instance.connectedClients[i].isLocal == false && Server.instance.connectedClients[i].Player == currentTurnPlayer)
+                {
+                    Server.instance.connectedClients[i].gameService.SendBoardTurnDatasTurn();
+                }
+            }
+        }
+        else
+        {
+            passTurnButton.interactable = true;
         }
 
         UpdateCurrentPlayerTurnUI();
@@ -299,14 +384,97 @@ public class GameManager : MonoBehaviour
         return selectedPiece;
     }
 
-    // public List<PieceField> GetMovableField()
-    // {
-    //     return movableField;
-    // }
-
     #endregion
 
     #region UIUpdate
+
+    public void StartGame()
+    {
+        lobbyUI.SetActive(false);
+        if (LanMode)
+        {
+
+            for (int i = 0; i < Server.instance.connectedClients.Count; i++)
+            {
+                if (Server.instance.connectedClients[i].isLocal == false)
+                {
+                    Server.instance.connectedClients[i].gameService.BroadcastGameStart();
+                    break;
+                }
+            }
+
+            isPlayable = false;
+            for (int i = 0; i < Server.instance.connectedClients.Count; i++)
+            {
+                if (Server.instance.connectedClients[i].isLocal == true && Server.instance.connectedClients[i].Player == currentTurnPlayer)
+                {
+                    passTurnButton.interactable = true;
+                    isPlayable = true;
+                }
+            }
+
+            for (int i = 0; i < Server.instance.connectedClients.Count; i++)
+            {
+                if (Server.instance.connectedClients[i].isLocal == false && Server.instance.connectedClients[i].Player == currentTurnPlayer)
+                {
+                    Server.instance.connectedClients[i].gameService.SendBoardTurnDatasTurn();
+                }
+            }
+
+        }
+        else
+        {
+            passTurnButton.interactable = true;
+            isPlayable = true;
+        }
+
+        gameStarted = true;
+
+        UpdateCurrentPlayerTurnUI();
+    }
+
+    public void SwitchLanOrLocalButtonUI(int i)
+    {
+        if (i == 0) //click on lan
+        {
+            server.StartServer();
+            playerManualList = new bool[3];
+
+            lobbyUI.transform.GetChild(1).GetComponent<Button>().interactable = false; //make lan false
+            lobbyUI.transform.GetChild(2).GetComponent<Button>().interactable = true; // make local true
+            lobbyUI.transform.GetChild(3).gameObject.SetActive(true);
+
+            lobbyUI.transform.GetChild(4).GetChild(1).gameObject.SetActive(false);
+            lobbyUI.transform.GetChild(4).GetChild(2).gameObject.SetActive(false);
+            lobbyUI.transform.GetChild(4).GetChild(3).gameObject.SetActive(false);
+            lobbyUI.transform.GetChild(4).GetChild(1).GetChild(1).gameObject.SetActive(false);
+            lobbyUI.transform.GetChild(4).GetChild(2).GetChild(1).gameObject.SetActive(false);
+            lobbyUI.transform.GetChild(4).GetChild(3).GetChild(1).gameObject.SetActive(false);
+            LanMode = true;
+            lobbyUI.transform.GetChild(0).gameObject.SetActive(false);
+            lobbyUI.transform.GetChild(5).gameObject.SetActive(true);
+        }
+        else if (i == 1) //click on local
+        {
+            server.StopServer();
+            playerManualList = new bool[3] { true, true, true };
+
+            lobbyUI.transform.GetChild(1).GetComponent<Button>().interactable = true; //make lan true
+            lobbyUI.transform.GetChild(2).GetComponent<Button>().interactable = false; //make local false
+            lobbyUI.transform.GetChild(3).gameObject.SetActive(false);
+
+            lobbyUI.transform.GetChild(4).GetChild(1).gameObject.SetActive(true);
+            lobbyUI.transform.GetChild(4).GetChild(2).gameObject.SetActive(true);
+            lobbyUI.transform.GetChild(4).GetChild(3).gameObject.SetActive(true);
+            lobbyUI.transform.GetChild(4).GetChild(1).GetChild(1).gameObject.SetActive(false);
+            lobbyUI.transform.GetChild(4).GetChild(2).GetChild(1).gameObject.SetActive(false);
+            lobbyUI.transform.GetChild(4).GetChild(3).GetChild(1).gameObject.SetActive(false);
+            LanMode = false;
+            lobbyUI.transform.GetChild(0).gameObject.SetActive(true);
+            lobbyUI.transform.GetChild(5).gameObject.SetActive(false);
+        }
+    }
+
     public void UpdatePieceFieldImage(PieceField pieceField)
     {
         // Debug.Log("Hello");
@@ -398,11 +566,15 @@ public class GameManager : MonoBehaviour
     {
         if (gameOver)
         {
-            currentPlayerUI.text = "Game Over!";
+            currentPlayerUI.text = "   Game Over!";
+        }
+        else if (currentPastTurn != 0)
+        {
+            currentPlayerUI.text = $"   Turn : {turn - currentPastTurn}";
         }
         else
         {
-            currentPlayerUI.text = $"   Current Player : <color={GetPlayerColor((int)currentTurnPlayer)}>Player {(int)currentTurnPlayer}</color>";
+            currentPlayerUI.text = $"   Player's Turn : <color={GetPlayerColor((int)currentTurnPlayer)}>Player {(int)currentTurnPlayer}</color>";
         }
 
     }
@@ -447,13 +619,17 @@ public class GameManager : MonoBehaviour
         PieceField newRookCastleField = tempRecord.GetVariablePieceField(3);
         bool firstMove = tempRecord.GetFirstMove();
 
-        oldPieceMoverField.SetPiece(moverPiece);
-        newPieceMoverField.SetPiece(takenPiece);
-        oldPieceMoverField.GetPiece().SetCastlable(firstMove);
-        UpdatePieceFieldImage(oldPieceMoverField);
-        UpdatePieceFieldImage(newPieceMoverField);
-        oldPieceMoverField.gameObject.GetComponent<SpriteRenderer>().color = new Color(255f, 255f, 0f, 1f);
-        newPieceMoverField.gameObject.GetComponent<SpriteRenderer>().color = new Color(255f, 255f, 0f, 1f);
+        if (oldPieceMoverField != null && newPieceMoverField != null)
+        {
+            oldPieceMoverField.SetPiece(moverPiece);
+            newPieceMoverField.SetPiece(takenPiece);
+            oldPieceMoverField.GetPiece().SetCastlable(firstMove);
+            UpdatePieceFieldImage(oldPieceMoverField);
+            UpdatePieceFieldImage(newPieceMoverField);
+            oldPieceMoverField.gameObject.GetComponent<SpriteRenderer>().color = new Color(255f, 255f, 0f, 1f);
+            newPieceMoverField.gameObject.GetComponent<SpriteRenderer>().color = new Color(255f, 255f, 0f, 1f);
+        }
+
         if (oldRookCastleField != null && newRookCastleField != null)
         {
             oldRookCastleField.SetPiece(newRookCastleField.GetPiece());
@@ -468,6 +644,7 @@ public class GameManager : MonoBehaviour
         gameOverTextUI.gameObject.SetActive(false);
 
         isPlayable = false;
+        UpdateCurrentPlayerTurnUI();
         UpdateButton();
     }
 
@@ -488,21 +665,25 @@ public class GameManager : MonoBehaviour
         Pieces pawnPromotionPiece = tempRecord.GetVariablePiece(2);
         bool firstMove = tempRecord.GetFirstMove();
 
-        if (pawnPromotionPiece != null)
+        if (oldPieceMoverField != null && pawnPromotionPiece != null)
         {
             newPieceMoverField.SetPiece(pawnPromotionPiece);
         }
-        else
+        else if (oldPieceMoverField != null && pawnPromotionPiece == null)
         {
             newPieceMoverField.SetPiece(moverPiece);
         }
 
-        oldPieceMoverField.SetPiece(null);
-        newPieceMoverField.GetPiece().SetCastlable(firstMove);
-        UpdatePieceFieldImage(oldPieceMoverField);
-        UpdatePieceFieldImage(newPieceMoverField);
-        oldPieceMoverField.gameObject.GetComponent<SpriteRenderer>().color = new Color(255f, 255f, 0f, 1f);
-        newPieceMoverField.gameObject.GetComponent<SpriteRenderer>().color = new Color(255f, 255f, 0f, 1f);
+        if (oldPieceMoverField != null && newPieceMoverField != null)
+        {
+            oldPieceMoverField.SetPiece(null);
+            newPieceMoverField.GetPiece().SetCastlable(firstMove);
+            UpdatePieceFieldImage(oldPieceMoverField);
+            UpdatePieceFieldImage(newPieceMoverField);
+            oldPieceMoverField.gameObject.GetComponent<SpriteRenderer>().color = new Color(255f, 255f, 0f, 1f);
+            newPieceMoverField.gameObject.GetComponent<SpriteRenderer>().color = new Color(255f, 255f, 0f, 1f);
+        }
+
         if (oldRookCastleField != null && newRookCastleField != null)
         {
             newRookCastleField.SetPiece(oldRookCastleField.GetPiece());
@@ -526,9 +707,11 @@ public class GameManager : MonoBehaviour
             {
                 gameOverTextUI.gameObject.SetActive(true);
             }
-
-            oldPieceMoverField.gameObject.GetComponent<SpriteRenderer>().color = new Color(255f, 255f, 255f, 0f);
-            newPieceMoverField.gameObject.GetComponent<SpriteRenderer>().color = new Color(255f, 255f, 255f, 0f);
+            if (oldPieceMoverField != null && newPieceMoverField != null)
+            {
+                oldPieceMoverField.gameObject.GetComponent<SpriteRenderer>().color = new Color(255f, 255f, 255f, 0f);
+                newPieceMoverField.gameObject.GetComponent<SpriteRenderer>().color = new Color(255f, 255f, 255f, 0f);
+            }
 
             if (oldRookCastleField != null && newRookCastleField != null)
             {
@@ -536,6 +719,7 @@ public class GameManager : MonoBehaviour
                 newRookCastleField.gameObject.GetComponent<SpriteRenderer>().color = new Color(255f, 255f, 255f, 0f);
             }
         }
+        UpdateCurrentPlayerTurnUI();
         UpdateButton();
     }
 
@@ -939,7 +1123,6 @@ public class GameManager : MonoBehaviour
                 }
             }
 
-
             if (mover.GetPiece().GetPieceType() == PieceTypes.Pawn && endingPosition.GetRow() == 0
             && endingPosition.GetColor() != mover.GetPiece().GetPlayerOwner())
             {
@@ -949,7 +1132,20 @@ public class GameManager : MonoBehaviour
                 isPlayable = false;
                 endingPosition.SetPiece(mover.GetPiece());
                 pawnPromotePieceField = endingPosition;
+                pawnPromoteActive = true;
 
+                if (LanMode)
+                {
+                    for (int i = 0; i < Server.instance.connectedClients.Count; i++)
+                    {
+                        if (Server.instance.connectedClients[i].Player == mover.GetPiece().GetPlayerOwner()
+                        && !Server.instance.connectedClients[i].isLocal)
+                        {
+                            Server.instance.connectedClients[i].gameService.SendNeedPromotion(endingPosition.GetBoardPosition().ToString());
+                            break;
+                        }
+                    }
+                }
                 StartCoroutine(WaitForPawnPromote(() => { Debug.Log("Pawn promotion is complete!"); }));
 
             }
@@ -1073,8 +1269,10 @@ public class GameManager : MonoBehaviour
             History.Push(new Record(tempStartingPos, moverPiece, tempEndingPos, takenPiece, beforeCaslte, tempOldRook, tempNewRook, pawnPromotionPiece));
             UpdateButton();
 
-            turn += 1;
-            ChangeCurrentTurnPlayer();
+            if (!pawnPromoteActive)
+            {
+                ChangeCurrentTurnPlayer();
+            }
         }
         else
         {
@@ -1617,4 +1815,302 @@ public class GameManager : MonoBehaviour
         pawnPromotePanel.SetActive(false);
     }
 
+    public void PassTurn()
+    {
+        History.Push(new Record(null, null, null, null, false, null, null, null));
+        UpdateButton();
+        ChangeCurrentTurnPlayer();
+    }
+
+    public void GatherPieceFieldData()
+    {
+        boardState = new List<string>();
+        for (int i = 0; i < 96; i++)
+        {
+            PieceField pieceField = GetPieceField((BoardPosition)i);
+            if (pieceField != null && pieceField.GetPiece() != null)
+            {
+                pieceFieldServerCheck = pieceField;
+            }
+            // Check if there is a scriptable piece in the slot
+            if (pieceFieldServerCheck != null && pieceFieldServerCheck.GetPiece() != null)
+            {
+                // Add relevant information about the scriptable piece to the board state
+                string pieceInfo = $"{{\"Field\": \"{(BoardPosition)i}\", \"Piece\": \"{pieceFieldServerCheck.GetPiece().GetPieceType()}\", \"Owner\": \"{pieceFieldServerCheck.GetPiece().GetPlayerOwner()}\"}}";
+                boardState.Add(pieceInfo);
+            }
+            pieceFieldServerCheck = null;
+        }
+        dataGatheringCompleted = true;
+    }
+
+    public void GatherPieceFieldDataPlayer(int player)
+    {
+        boardState = new List<string>();
+        for (int i = 0; i < 96; i++)
+        {
+            PieceField pieceField = GetPieceField((BoardPosition)i);
+            if (pieceField != null && pieceField.GetPiece() != null)
+            {
+                pieceFieldServerCheck = pieceField;
+            }
+            // Check if there is a scriptable piece in the slot
+            if (pieceFieldServerCheck != null && pieceFieldServerCheck.GetPiece() != null)
+            {
+                if ((int)pieceFieldServerCheck.GetPiece().GetPlayerOwner() == player)
+                {
+                    // Add relevant information about the scriptable piece to the board state
+                    string pieceInfo = $"{{\"Field\": \"{(BoardPosition)i}\", \"Piece\": \"{pieceFieldServerCheck.GetPiece().GetPieceType()}\", \"Owner\": \"{pieceFieldServerCheck.GetPiece().GetPlayerOwner()}\"}}";
+                    boardState.Add(pieceInfo);
+                }
+            }
+            pieceFieldServerCheck = null;
+        }
+        dataGatheringBoardPlayerCompleted = true;
+    }
+
+
+    public static int Decode(string position)
+    {
+        if (position.Length != 3)
+        {
+            throw new ArgumentException("Invalid position format. It should be a three-character string.");
+        }
+
+        char color = position[0];
+        char column = position[1];
+        char row = position[2];
+
+        int colorValue, columnValue, rowValue;
+
+        switch (color)
+        {
+            case 'B':
+                colorValue = 0;
+                break;
+            case 'G':
+                colorValue = 32;
+                break;
+            case 'R':
+                colorValue = 64;
+                break;
+            default:
+                throw new ArgumentException("Invalid color. It should be 'B', 'G', or 'R'.");
+        }
+
+        switch (column)
+        {
+            case 'A':
+                columnValue = 0;
+                break;
+            case 'B':
+                columnValue = 4;
+                break;
+            case 'C':
+                columnValue = 8;
+                break;
+            case 'D':
+                columnValue = 12;
+                break;
+            case 'E':
+                columnValue = 16;
+                break;
+            case 'F':
+                columnValue = 20;
+                break;
+            case 'G':
+                columnValue = 24;
+                break;
+            case 'H':
+                columnValue = 28;
+                break;
+            default:
+                throw new ArgumentException("Invalid column. It should be 'A' through 'H'.");
+        }
+
+        if (!char.IsDigit(row) || row < '1' || row > '4')
+        {
+            throw new ArgumentException("Invalid row. It should be a digit between 1 and 4.");
+        }
+
+        rowValue = row - '1';
+
+        return colorValue + columnValue + rowValue;
+    }
+
+    public void GameServiceMoveCommand(int i)
+    {
+        try
+        {
+            var startingPosition = GetPieceField((BoardPosition)Decode(gsFrom));
+            var endingPosition = GetPieceField((BoardPosition)Decode(gsTo));
+
+            List<PieceField> movableFields = MovablePieceField(startingPosition);
+            if (movableFields.Contains(endingPosition))
+            {
+                MoveAction(startingPosition, endingPosition);
+                Server.instance.connectedClients[i].gameService.SendMoveCommandSuccess();
+            }
+            else
+            {
+                Server.instance.connectedClients[i].gameService.SendMoveCommandFail();
+            }
+
+            gsFrom = "";
+            gsTo = "";
+        }
+        catch (Exception)
+        {
+            Server.instance.connectedClients[i].gameService.SendMoveCommandError();
+        };
+    }
+
+    public void GameServiceMovableFieldCommand(int i)
+    {
+        try
+        {
+            var movableField = GetPieceField((BoardPosition)Decode(gsMovableField));
+
+            movableFieldsList = new List<string>();
+            List<PieceField> movableFields = MovablePieceField(movableField);
+            if (movableField.GetPiece() != null)
+            {
+                if (Server.instance.connectedClients[i].Player == movableField.GetPiece().GetPlayerOwner())
+                {
+                    if (movableFields.Count > 0)
+                    {
+                        for (int j = 0; j < movableFields.Count; j++)
+                        {
+                            string pieceInfo = $"{{\"Field\": \"{movableFields[j].GetBoardPosition()}\"}}";
+                            movableFieldsList.Add(pieceInfo);
+                        }
+
+                        movableFieldsListJson = "[" + string.Join(",", movableFieldsList) + "]";
+
+                        Server.instance.connectedClients[i].gameService.SendMovableFieldCommandSuccess();
+                    }
+                    else
+                    {
+                        Server.instance.connectedClients[i].gameService.SendMovableFieldCommandFail();
+                    }
+
+                    gsMovableField = "";
+                    movableFieldsList = new List<string>();
+                }
+                else
+                {
+                    Server.instance.connectedClients[i].gameService.SendMovableFieldCommandFieldIsNotOwn();
+                }
+            }
+            else
+            {
+                Server.instance.connectedClients[i].gameService.SendMovableFieldCommandFieldIsNull();
+            }
+        }
+        catch (Exception)
+        {
+            Server.instance.connectedClients[i].gameService.SendMoveCommandError();
+        };
+    }
+
+    public void CheckingForKingIfChecked(int i)
+    {
+        (bool isKingInCheck, List<PieceField> kingMovableField, bool isBlockable, List<PieceField> blockableField, List<PieceField> nonMovablePiece, List<PieceField> nonMovablePiece_movableField, List<Players> playerCheck) = IsKingInCheck(Server.instance.connectedClients[i].Player);
+        StatusMessage statusMessage = new StatusMessage { };
+        if (isKingInCheck == false)
+        {
+            List<string> kingMovableFieldStr = new List<string>();
+            kingMovableFieldJson = "";
+            for (int j = 0; j < kingMovableField.Count; j++)
+            {
+                string pieceInfo = $"{{\"Field\": \"{kingMovableField[j].GetBoardPosition()}\"}}";
+                kingMovableFieldStr.Add(pieceInfo);
+            }
+
+            kingMovableFieldJson = "[" + string.Join(",", kingMovableFieldStr) + "]";
+
+            // List<string> blockableFieldStr = new List<string>();
+            // blockableFieldJson = "";
+            // for (int k = 0; k < blockableField.Count; k++)
+            // {
+            //     string pieceInfo = $"{{\"Field\": \"{kingMovableField[k].GetBoardPosition()}\"}}";
+            //     blockableFieldStr.Add(pieceInfo);
+            // }
+            // blockableFieldJson = "[" + string.Join(",", blockableFieldStr) + "]";
+
+            statusMessage = new StatusMessage
+            {
+                Status = "Success",
+                Message = "You're not in checked. Check KingMovableField for fields that king can move, If have nothing it means your king can't move. ",
+                Player = "",
+                Password = "",
+                YourTurn = null,
+                Board = "",
+                MovableFields = "",
+                NeedPromotion = "",
+
+                KingInCheck = isKingInCheck,
+                KingMovableField = kingMovableFieldJson,
+                Blockable = null,
+                BlockableField = "",
+                WhoChecked = ""
+            };
+            kingMovableFieldJson = "";
+        }
+        else
+        {
+            List<string> kingMovableFieldStr = new List<string>();
+            kingMovableFieldJson = "";
+            for (int j = 0; j < kingMovableField.Count; j++)
+            {
+                string pieceInfo = $"{{\"Field\": \"{kingMovableField[j].GetBoardPosition()}\"}}";
+                kingMovableFieldStr.Add(pieceInfo);
+            }
+
+            kingMovableFieldJson = "[" + string.Join(",", kingMovableFieldStr) + "]";
+
+            List<string> blockableFieldStr = new List<string>();
+            blockableFieldJson = "";
+            for (int k = 0; k < blockableField.Count; k++)
+            {
+                string pieceInfo = $"{{\"Field\": \"{blockableField[k].GetBoardPosition()}\"}}";
+                blockableFieldStr.Add(pieceInfo);
+            }
+            blockableFieldJson = "[" + string.Join(",", blockableFieldStr) + "]";
+
+            List<string> whoCheckStr = new List<string>();
+            whoCheckedJson = "";
+            for (int l = 0; l < playerCheck.Count; l++)
+            {
+                string playerInfo = $"{{\"Player\": \"{playerCheck[l]}\"}}";
+                whoCheckStr.Add(playerInfo);
+            }
+            whoCheckedJson = "[" + string.Join(",", whoCheckStr) + "]";
+
+            statusMessage = new StatusMessage
+            {
+                Status = "Success",
+                Message = "You're in checked. Check KingMovableField for fields that king can move, If have nothing it means your king can't move. Check Blockable for king is blockable. and BlockableField for field that have to be block to protect king. ",
+                Player = "",
+                Password = "",
+                YourTurn = null,
+                Board = "",
+                MovableFields = "",
+                NeedPromotion = "",
+
+                KingInCheck = isKingInCheck,
+                KingMovableField = kingMovableFieldJson,
+                Blockable = isBlockable,
+                BlockableField = kingMovableFieldJson,
+                WhoChecked = whoCheckedJson
+            };
+
+            kingMovableFieldJson = "";
+            blockableFieldJson = "";
+            whoCheckedJson = "";
+            gsCurrentClient = -1;
+        }
+
+        Server.instance.connectedClients[i].gameService.KingInCheck(statusMessage);
+    }
 }
