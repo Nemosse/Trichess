@@ -38,7 +38,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] private int turn = 1;
     [SerializeField] private Players currentTurnPlayer = Players.Player1;
     [SerializeField] private PieceField selectedPiece = null;
-    [SerializeField] private int currentPastTurn = 0;
+    [SerializeField] public int currentPastTurn = 0;
 
     [Header("BoardPieceField")]
     [SerializeField] private GameObject[] blueBoard = new GameObject[32];
@@ -125,7 +125,7 @@ public class GameManager : MonoBehaviour
         {
             if (ipAddress.AddressFamily == AddressFamily.InterNetwork) // IPv4 addresses
             {
-                machineIP = $"ws://{ipAddress}:8080/";
+                machineIP = $"ws://{ipAddress}:8181/game";
             }
         }
 
@@ -353,6 +353,7 @@ public class GameManager : MonoBehaviour
             passTurnButton.interactable = true;
         }
 
+        togglePromotePawn = false;
         UpdateCurrentPlayerTurnUI();
     }
 
@@ -602,6 +603,7 @@ public class GameManager : MonoBehaviour
 
     public void BackwardTurn()
     {
+        passTurnButton.interactable = false;
         currentPastTurn += 1;
 
         Record tempRecord = History.history[History.history.Count - currentPastTurn];
@@ -701,7 +703,24 @@ public class GameManager : MonoBehaviour
         {
             if (gameOver == false)
             {
+
                 isPlayable = true;
+                if (LanMode)
+                {
+                    passTurnButton.interactable = false;
+                    for (int i = 0; i < Server.instance.connectedClients.Count; i++)
+                    {
+                        if (Server.instance.connectedClients[i].isLocal == true && Server.instance.connectedClients[i].Player == currentTurnPlayer)
+                        {
+                            passTurnButton.interactable = true;
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    passTurnButton.interactable = true;
+                }
             }
             else
             {
@@ -1133,6 +1152,9 @@ public class GameManager : MonoBehaviour
                 endingPosition.SetPiece(mover.GetPiece());
                 pawnPromotePieceField = endingPosition;
                 pawnPromoteActive = true;
+                backwardButton.interactable = false;
+                forwardButton.interactable = false;
+                passTurnButton.interactable = false;
 
                 if (LanMode)
                 {
@@ -1267,7 +1289,11 @@ public class GameManager : MonoBehaviour
 
 
             History.Push(new Record(tempStartingPos, moverPiece, tempEndingPos, takenPiece, beforeCaslte, tempOldRook, tempNewRook, pawnPromotionPiece));
-            UpdateButton();
+            if (!togglePromotePawn)
+            {
+                UpdateButton();
+            }
+
 
             if (!pawnPromoteActive)
             {
@@ -1646,12 +1672,12 @@ public class GameManager : MonoBehaviour
 
     public void UpdateGameOverText(Players whoWon, Players whoGotChecked)
     {
-        if (whoWon == Players.Player1)
+        if (whoWon != Players.Empty)
         {
-            gameOverTextUI.text = "{GetPlayerColor(whoWon)}>Player {whoWon}</color>" + " wins!";
+            gameOverTextUI.text = $"<color={GetPlayerColor((int)whoWon)}>Player {(int)whoWon}</color>" + " wins!";
         }
 
-        checkmatedTextUi.GetComponent<TextMeshProUGUI>().text = "{GetPlayerColor(whoWon)}>Player {whoGotChecked}</color>" + " got checkmated!";
+        checkmatedTextUi.GetComponent<TextMeshProUGUI>().text = $"<color={GetPlayerColor((int)whoGotChecked)}>Player {(int)whoGotChecked}</color>" + " got checkmated!";
     }
 
     public List<PieceField> ReturnAllPieceMovableField(Players player)
@@ -1811,14 +1837,38 @@ public class GameManager : MonoBehaviour
         promotePawnColor = Players.Empty;
         togglePromotePawn = false;
         isPlayable = true;
+        if (History.history.Count > 0)
+        {
+            backwardButton.interactable = true;
+        }
 
+        if (LanMode)
+        {
+            passTurnButton.interactable = false;
+            for (int m = 0; m < Server.instance.connectedClients.Count; m++)
+            {
+                if (Server.instance.connectedClients[i].isLocal == true && Server.instance.connectedClients[i].Player == currentTurnPlayer)
+                {
+                    passTurnButton.interactable = true;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            passTurnButton.interactable = true;
+        }
+
+        pawnPromoteActive = false;
         pawnPromotePanel.SetActive(false);
+        ChangeCurrentTurnPlayer();
     }
 
     public void PassTurn()
     {
         History.Push(new Record(null, null, null, null, false, null, null, null));
         UpdateButton();
+        selectedPiece = null;
         ChangeCurrentTurnPlayer();
     }
 
@@ -2101,7 +2151,7 @@ public class GameManager : MonoBehaviour
                 KingInCheck = isKingInCheck,
                 KingMovableField = kingMovableFieldJson,
                 Blockable = isBlockable,
-                BlockableField = kingMovableFieldJson,
+                BlockableField = blockableFieldJson,
                 WhoChecked = whoCheckedJson
             };
 

@@ -1,13 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using TMPro;
-using Unity.VisualScripting.Antlr3.Runtime.Tree;
 using UnityEngine;
 using WebSocketSharp;
 using WebSocketSharp.Server;
 using Newtonsoft.Json;
-using UnityEditor.SceneManagement;
 
 public class GameService : WebSocketBehavior
 {
@@ -94,8 +90,8 @@ public class GameService : WebSocketBehavior
                 StatusMessage statusMessage = new StatusMessage
                 {
                     Status = "Success",
-                    Message = $"ํYou're successfully joined. You're Player {(int)clientData.Player}! Your password is in data. {message}",
-                    Player = clientData.Player.ToString(),
+                    Message = $"You're successfully joined. You're Player {(int)clientData.Player}! Your password is in data. {message}",
+                    Player = $"\"{clientData.Player.ToString()}\"",
                     Password = password,
                     YourTurn = null,
                     Board = "",
@@ -249,19 +245,45 @@ public class GameService : WebSocketBehavior
                 {
                     if (Server.instance.connectedClients[i].Password == commandMessage.Password.ToString())
                     {
-                        if (Server.instance.connectedClients[i].Player == GameManager.instance.GetCurrentTurnPlayer())
+                        if (GameManager.instance.currentPastTurn == 0)
                         {
-                            Server.instance.connectedClientsForGameService = i;
-                            MainThreadDispatcher.instance.RunOnMainThread(() =>
+                            if (Server.instance.connectedClients[i].Player == GameManager.instance.GetCurrentTurnPlayer())
                             {
-                                Server.instance.connectedClients[Server.instance.connectedClientsForGameService].gameService.SendBoardTurnDatasTurn();
-                                Server.instance.connectedClientsForGameService = -1;
-                            });
+                                Server.instance.connectedClientsForGameService = i;
+                                MainThreadDispatcher.instance.RunOnMainThread(() =>
+                                {
+                                    Server.instance.connectedClients[Server.instance.connectedClientsForGameService].gameService.SendBoardTurnDatasTurn();
+                                    Server.instance.connectedClientsForGameService = -1;
+                                });
 
-                            toggleCustomJson = true;
+                                toggleCustomJson = true;
+                                foundPassword = true;
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            statusMessage = new StatusMessage
+                            {
+                                Status = "Fail",
+                                Message = "It not in current turn. The game is watch back in past turn. ",
+                                Player = "",
+                                Password = "",
+                                YourTurn = false,
+                                Board = "",
+                                MovableFields = "",
+                                NeedPromotion = "",
+
+                                KingInCheck = null,
+                                KingMovableField = "",
+                                Blockable = null,
+                                BlockableField = "",
+                                WhoChecked = ""
+                            };
                             foundPassword = true;
                             break;
                         }
+
                     }
 
                 }
@@ -340,33 +362,57 @@ public class GameService : WebSocketBehavior
                         {
                             if (Server.instance.connectedClients[i].Player == GameManager.instance.GetCurrentTurnPlayer())
                             {
-                                string fromPosition = commandMessage.Move.From;
-                                string toPosition = commandMessage.Move.To;
-
-                                if (fromPosition.Length == 3 && toPosition.Length == 3)
+                                if (GameManager.instance.currentPastTurn == 0)
                                 {
-                                    GameManager.instance.gsCurrentClient = i;
-                                    GameManager.instance.gsFrom = fromPosition;
-                                    GameManager.instance.gsTo = toPosition;
+                                    string fromPosition = commandMessage.Move.From;
+                                    string toPosition = commandMessage.Move.To;
 
-                                    MainThreadDispatcher.instance.RunOnMainThread(() =>
+                                    if (fromPosition.Length == 3 && toPosition.Length == 3)
                                     {
-                                        GameManager.instance.GameServiceMoveCommand(GameManager.instance.gsCurrentClient);
-                                    });
+                                        GameManager.instance.gsCurrentClient = i;
+                                        GameManager.instance.gsFrom = fromPosition;
+                                        GameManager.instance.gsTo = toPosition;
 
-                                    foundPassword = true;
-                                    toggleCustomJson = true;
-                                    break;
+                                        MainThreadDispatcher.instance.RunOnMainThread(() =>
+                                        {
+                                            GameManager.instance.GameServiceMoveCommand(GameManager.instance.gsCurrentClient);
+                                        });
+
+                                        foundPassword = true;
+                                        toggleCustomJson = true;
+                                        break;
+                                    }
+                                    else
+                                    {
+                                        statusMessage = new StatusMessage
+                                        {
+                                            Status = "Error",
+                                            Message = "Invalid field name. ",
+                                            Player = "",
+                                            Password = "",
+                                            YourTurn = null,
+                                            Board = "",
+                                            MovableFields = "",
+                                            NeedPromotion = "",
+
+                                            KingInCheck = null,
+                                            KingMovableField = "",
+                                            Blockable = null,
+                                            BlockableField = "",
+                                            WhoChecked = ""
+                                        };
+                                        foundPassword = true;
+                                    }
                                 }
                                 else
                                 {
                                     statusMessage = new StatusMessage
                                     {
-                                        Status = "Error",
-                                        Message = "Invalid field name. ",
+                                        Status = "Fail",
+                                        Message = "It not in current turn. The game is watch back in past turn. ",
                                         Player = "",
                                         Password = "",
-                                        YourTurn = null,
+                                        YourTurn = false,
                                         Board = "",
                                         MovableFields = "",
                                         NeedPromotion = "",
@@ -378,9 +424,7 @@ public class GameService : WebSocketBehavior
                                         WhoChecked = ""
                                     };
                                     foundPassword = true;
-                                    toggleCustomJson = true;
                                 }
-
 
                             }
                         }
@@ -439,21 +483,45 @@ public class GameService : WebSocketBehavior
                     {
                         if (Server.instance.connectedClients[i].Password == commandMessage.Password.ToString())
                         {
-
-                            string field = commandMessage.Field;
-                            GameManager.instance.gsMovableField = field;
-                            GameManager.instance.gsCurrentClient = i;
-                            MainThreadDispatcher.instance.RunOnMainThread(() =>
+                            if (GameManager.instance.currentPastTurn == 0)
                             {
-                                GameManager.instance.GameServiceMovableFieldCommand(GameManager.instance.gsCurrentClient);
-                                GameManager.instance.gsMovableField = "";
-                                GameManager.instance.gsCurrentClient = -1;
-                            });
 
-                            foundPassword = true;
-                            toggleCustomJson = true;
-                            break;
+                                string field = commandMessage.Field;
+                                GameManager.instance.gsMovableField = field;
+                                GameManager.instance.gsCurrentClient = i;
+                                MainThreadDispatcher.instance.RunOnMainThread(() =>
+                                {
+                                    GameManager.instance.GameServiceMovableFieldCommand(GameManager.instance.gsCurrentClient);
+                                    GameManager.instance.gsMovableField = "";
+                                    GameManager.instance.gsCurrentClient = -1;
+                                });
 
+                                foundPassword = true;
+                                toggleCustomJson = true;
+                                break;
+                            }
+                            else
+                            {
+                                statusMessage = new StatusMessage
+                                {
+                                    Status = "Fail",
+                                    Message = "It not in current turn. The game is watch back in past turn. ",
+                                    Player = "",
+                                    Password = "",
+                                    YourTurn = false,
+                                    Board = "",
+                                    MovableFields = "",
+                                    NeedPromotion = "",
+
+                                    KingInCheck = null,
+                                    KingMovableField = "",
+                                    Blockable = null,
+                                    BlockableField = "",
+                                    WhoChecked = ""
+                                };
+                                foundPassword = true;
+                                break;
+                            }
                         }
 
                     }
@@ -490,35 +558,61 @@ public class GameService : WebSocketBehavior
                     {
                         if (Server.instance.connectedClients[i].Player == GameManager.instance.GetCurrentTurnPlayer())
                         {
-                            GameManager.instance.gsCurrentClient = i;
-                            MainThreadDispatcher.instance.RunOnMainThread(() =>
+                            if (GameManager.instance.currentPastTurn == 0)
                             {
-                                GameManager.instance.PassTurn();
-                                GameManager.instance.gsCurrentClient = -1;
-                            });
+                                GameManager.instance.gsCurrentClient = i;
+                                MainThreadDispatcher.instance.RunOnMainThread(() =>
+                                {
+                                    GameManager.instance.PassTurn();
+                                    GameManager.instance.gsCurrentClient = -1;
+                                });
 
-                            statusMessage = new StatusMessage
+                                statusMessage = new StatusMessage
+                                {
+                                    Status = "Success",
+                                    Message = "You're passing your turn. ",
+                                    Player = "",
+                                    Password = "",
+                                    YourTurn = null,
+                                    Board = "",
+                                    MovableFields = "",
+                                    NeedPromotion = "",
+
+                                    KingInCheck = null,
+                                    KingMovableField = "",
+                                    Blockable = null,
+                                    BlockableField = "",
+                                    WhoChecked = ""
+                                };
+
+
+                                foundPassword = true;
+                                currentPlayerTurn = true;
+                                break;
+                            }
+                            else
                             {
-                                Status = "Success",
-                                Message = "You're passing your turn. ",
-                                Player = "",
-                                Password = "",
-                                YourTurn = null,
-                                Board = "",
-                                MovableFields = "",
-                                NeedPromotion = "",
+                                statusMessage = new StatusMessage
+                                {
+                                    Status = "Fail",
+                                    Message = "It not in current turn. The game is watch back in past turn. ",
+                                    Player = "",
+                                    Password = "",
+                                    YourTurn = false,
+                                    Board = "",
+                                    MovableFields = "",
+                                    NeedPromotion = "",
 
-                                KingInCheck = null,
-                                KingMovableField = "",
-                                Blockable = null,
-                                BlockableField = "",
-                                WhoChecked = ""
-                            };
+                                    KingInCheck = null,
+                                    KingMovableField = "",
+                                    Blockable = null,
+                                    BlockableField = "",
+                                    WhoChecked = ""
+                                };
+                                foundPassword = true;
+                                break;
+                            }
 
-
-                            foundPassword = true;
-                            currentPlayerTurn = true;
-                            break;
                         }
                     }
 
@@ -576,17 +670,44 @@ public class GameService : WebSocketBehavior
                     {
                         if (Server.instance.connectedClients[i].Player == GameManager.instance.GetCurrentTurnPlayer())
                         {
-                            GameManager.instance.gsCurrentClient = i;
-                            MainThreadDispatcher.instance.RunOnMainThread(() =>
+                            if (GameManager.instance.currentPastTurn == 0)
                             {
-                                GameManager.instance.CheckingForKingIfChecked(GameManager.instance.gsCurrentClient);
-                                GameManager.instance.gsCurrentClient = -1;
-                            });
+                                GameManager.instance.gsCurrentClient = i;
+                                MainThreadDispatcher.instance.RunOnMainThread(() =>
+                                {
+                                    GameManager.instance.CheckingForKingIfChecked(GameManager.instance.gsCurrentClient);
+                                    GameManager.instance.gsCurrentClient = -1;
+                                });
 
-                            foundPassword = true;
-                            toggleCustomJson = true;
-                            currentPlayerTurn = true;
-                            break;
+                                foundPassword = true;
+                                toggleCustomJson = true;
+                                currentPlayerTurn = true;
+                                break;
+                            }
+                            else
+                            {
+                                statusMessage = new StatusMessage
+                                {
+                                    Status = "Fail",
+                                    Message = "It not in current turn. The game is watch back in past turn. ",
+                                    Player = "",
+                                    Password = "",
+                                    YourTurn = false,
+                                    Board = "",
+                                    MovableFields = "",
+                                    NeedPromotion = "",
+
+                                    KingInCheck = null,
+                                    KingMovableField = "",
+                                    Blockable = null,
+                                    BlockableField = "",
+                                    WhoChecked = ""
+                                };
+                                foundPassword = true;
+                                currentPlayerTurn = true;
+                                break;
+                            }
+
                         }
                     }
 
@@ -644,27 +765,55 @@ public class GameService : WebSocketBehavior
                     {
                         if (Server.instance.connectedClients[i].Player == GameManager.instance.GetCurrentTurnPlayer())
                         {
-                            Server.instance.connectedClientsForGameServiceMyPiece = i;
-                            Server.instance.playerForGameServiceMyPiece = (int)Server.instance.connectedClients[i].Player;
-                            MainThreadDispatcher.instance.RunOnMainThread(() =>
+                            if (GameManager.instance.currentPastTurn == 0)
                             {
-                                Server.instance.connectedClients[Server.instance.connectedClientsForGameServiceMyPiece].gameService.SendBoardTurnDatasBoardGS(Server.instance.playerForGameServiceMyPiece);
+                                Server.instance.connectedClientsForGameServiceMyPiece = i;
+                                Server.instance.playerForGameServiceMyPiece = (int)Server.instance.connectedClients[i].Player;
+                                MainThreadDispatcher.instance.RunOnMainThread(() =>
+                                {
+                                    Server.instance.connectedClients[Server.instance.connectedClientsForGameServiceMyPiece].gameService.SendBoardTurnDatasBoardGS(Server.instance.playerForGameServiceMyPiece);
 
-                                Server.instance.connectedClientsForGameServiceMyPiece = -1;
-                                Server.instance.playerForGameServiceMyPiece = -1;
-                            });
+                                    Server.instance.connectedClientsForGameServiceMyPiece = -1;
+                                    Server.instance.playerForGameServiceMyPiece = -1;
+                                });
 
-                            // Server.instance.connectedClientsForGameService = i;
-                            // MainThreadDispatcher.instance.RunOnMainThread(() =>
-                            // {
-                            //     Server.instance.connectedClients[Server.instance.connectedClientsForGameService].gameService.SendBoardTurnDatasTurn();
-                            //     Server.instance.connectedClientsForGameService = -1;
-                            // });
+                                // Server.instance.connectedClientsForGameService = i;
+                                // MainThreadDispatcher.instance.RunOnMainThread(() =>
+                                // {
+                                //     Server.instance.connectedClients[Server.instance.connectedClientsForGameService].gameService.SendBoardTurnDatasTurn();
+                                //     Server.instance.connectedClientsForGameService = -1;
+                                // });
 
-                            foundPassword = true;
-                            toggleCustomJson = true;
-                            currentPlayerTurn = true;
-                            break;
+                                foundPassword = true;
+                                toggleCustomJson = true;
+                                currentPlayerTurn = true;
+                                break;
+                            }
+                            else
+                            {
+                                statusMessage = new StatusMessage
+                                {
+                                    Status = "Fail",
+                                    Message = "It not in current turn. The game is watch back in past turn. ",
+                                    Player = "",
+                                    Password = "",
+                                    YourTurn = false,
+                                    Board = "",
+                                    MovableFields = "",
+                                    NeedPromotion = "",
+
+                                    KingInCheck = null,
+                                    KingMovableField = "",
+                                    Blockable = null,
+                                    BlockableField = "",
+                                    WhoChecked = ""
+                                };
+
+                                foundPassword = true;
+                                currentPlayerTurn = true;
+                                break;
+                            }
+
                         }
                     }
 
@@ -777,6 +926,23 @@ public class GameService : WebSocketBehavior
                                             GameManager.instance.gsPromotionInt = -1;
                                         });
                                         validPromoteInt = true;
+                                        statusMessage = new StatusMessage
+                                        {
+                                            Status = "Success",
+                                            Message = "You're successfully promote pawn into new piece. ",
+                                            Player = "",
+                                            Password = "",
+                                            YourTurn = null,
+                                            Board = "",
+                                            MovableFields = "",
+                                            NeedPromotion = "",
+
+                                            KingInCheck = null,
+                                            KingMovableField = "",
+                                            Blockable = null,
+                                            BlockableField = "",
+                                            WhoChecked = ""
+                                        };
                                     }
                                     else
                                     {
@@ -954,7 +1120,11 @@ public class GameService : WebSocketBehavior
                         });
                     }
 
-                    Server.instance.playerJoinCount -= 1;
+                    if (GameManager.instance.LanMode)
+                    {
+                        Server.instance.playerJoinCount -= 1;
+                    }
+
                     Server.instance.connectedClients.Remove(Server.instance.connectedClients[i]);
                     MainThreadDispatcher.instance.RunOnMainThread(() =>
                     {
@@ -989,7 +1159,7 @@ public class GameService : WebSocketBehavior
             YourTurn = null,
             Board = "",
             MovableFields = "",
-            NeedPromotion = position,
+            NeedPromotion = $"{position}",
 
             KingInCheck = null,
             KingMovableField = "",

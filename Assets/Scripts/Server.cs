@@ -53,14 +53,13 @@ public class Server : MonoBehaviour
 
     public void StartServer()
     {
-
         IPAddress[] localIPs = Dns.GetHostAddresses(Dns.GetHostName());
 
         foreach (IPAddress ipAddress in localIPs)
         {
             if (ipAddress.AddressFamily == AddressFamily.InterNetwork) // IPv4 addresses
             {
-                machineIP = $"ws://{ipAddress}:8080/";
+                machineIP = $"ws://{ipAddress}:8181/";
             }
         }
 
@@ -76,6 +75,9 @@ public class Server : MonoBehaviour
         if (server != null)
         {
             server.Stop();
+            playerJoinCount = 0;
+            player1Leave = false;
+            player2Leave = false;
             server = null;
         }
         Debug.Log("Server is stopped");
@@ -282,7 +284,7 @@ public class Server : MonoBehaviour
             Message = "Now is your turn",
             Player = "",
             Password = "",
-            YourTurn = null,
+            YourTurn = true,
             Board = boardGameState,
             MovableFields = "",
             NeedPromotion = "",
@@ -404,7 +406,7 @@ public class StatusMessage
         string yourTurnJson = YourTurn != null ? $",\"YourTurn\": {YourTurn}" : "";
         string boardDataJson = Board != "" && Board != null ? $",\"Board\": {Board}" : "";
         string movableFieldsJson = MovableFields != "" && MovableFields != null ? $",\"MovableFields\": {MovableFields}" : "";
-        string needPromotionJson = NeedPromotion != "" && NeedPromotion != null ? $",\"NeedProomtion\": {NeedPromotion}" : "";
+        string needPromotionJson = NeedPromotion != "" && NeedPromotion != null ? $",\"NeedPromotion\": \"{NeedPromotion}\"" : "";
 
         string isKingInCheckJson = KingInCheck != null ? $",\"KingInCheck\": {KingInCheck}" : "";
         string kingMovableFieldJson = KingMovableField != "" && KingMovableField != null ? $",\"KingMovableField\": {KingMovableField}" : "";
@@ -440,4 +442,3 @@ public class MoveData
     public string From;
     public string To;
 }
-
