@@ -426,14 +426,17 @@ public class CommandMessage
     public MoveData Move;
     public string Field; // this is fields that search for movable fields 
 
+    public string VirtualBoard;
+    public string Target;
+
     public string Promotion;
 
-    public string ToJsonString()
-    {
-        string moveJson = Move != null ? $",\"Move\":{JsonConvert.SerializeObject(Move)}" : "";
+    // public string ToJsonString()
+    // {
+    //     string moveJson = Move != null ? $",\"Move\":{JsonConvert.SerializeObject(Move)}" : "";
 
-        return $"{{\"Command\":\"{Command}\",\"Data\":\"{Password}\"{moveJson}}}";
-    }
+    //     return $"{{\"Command\":\"{Command}\",\"Data\":\"{Password}\"{moveJson}}}";
+    // }
 }
 
 [System.Serializable]

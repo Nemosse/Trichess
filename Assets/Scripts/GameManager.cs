@@ -46,6 +46,11 @@ public class GameManager : MonoBehaviour
     [SerializeField] private GameObject[] redBoard = new GameObject[32];
     // [SerializeField] private List<PieceField> movableField;
 
+    // [Header("VirtualBoardPieceField")]
+    // [SerializeField] private GameObject[] virtualBlueBoard = new GameObject[32];
+    // [SerializeField] private GameObject[] virtualGreenBoard = new GameObject[32];
+    // [SerializeField] private GameObject[] virtualRedBoard = new GameObject[32];
+
     [Header("UI")]
     [SerializeField] private GameObject pawnPromotePanel;
     public bool togglePromotePawn;
@@ -112,6 +117,7 @@ public class GameManager : MonoBehaviour
     public Players gsMyPiecePlayer = Players.Empty;
     public int gsPromotionInt = -1;
     bool pawnPromoteActive = false;
+    // public string virtualBoard = "";
 
     void Start()
     {
@@ -300,6 +306,54 @@ public class GameManager : MonoBehaviour
         }
 
     }
+
+    // public VirtualPieceField GetVirtualPieceField(VirtualBoardPosition virtualBoardPosition)
+    // {
+    //     GameObject[] boardToLook;
+    //     int resetIndex = 0;
+
+    //     if ((int)virtualBoardPosition < 32 && (int)virtualBoardPosition >= 0)
+    //     {
+    //         boardToLook = virtualBlueBoard;
+    //     }
+    //     else if ((int)virtualBoardPosition < 64 && (int)virtualBoardPosition >= 32)
+    //     {
+    //         boardToLook = virtualGreenBoard;
+    //         resetIndex = 32;
+    //     }
+    //     else if ((int)virtualBoardPosition <= 95 && (int)virtualBoardPosition >= 64)
+    //     {
+    //         boardToLook = virtualRedBoard;
+    //         resetIndex = 64;
+    //     }
+    //     else
+    //     {
+    //         boardToLook = null;
+    //     }
+
+    //     if (boardToLook != null)
+    //     {
+    //         // Debug.Log("Founded Board");
+    //         for (int i = 0; i < boardToLook.Length; i++)
+    //         {
+    //             if (boardToLook[(int)virtualBoardPosition - resetIndex].transform.GetChild(1).GetComponent<VirtualPieceField>().GetVirtualBoardPosition() == virtualBoardPosition)
+    //             {
+    //                 // Debug.Log("Founded Space");
+    //                 // Debug.Log(boardToLook[(int)boardPosition - resetIndex].name);
+    //                 return boardToLook[(int)virtualBoardPosition - resetIndex].transform.GetChild(1).GetComponent<VirtualPieceField>();
+
+    //             }
+
+    //         }
+    //         // Debug.Log("Not in space");
+    //         return null;
+    //     }
+    //     else
+    //     {
+    //         return null;
+    //     }
+
+    // }
 
     public void ChangeCurrentTurnPlayer()
     {
@@ -1665,6 +1719,29 @@ public class GameManager : MonoBehaviour
         gameOver = true;
         isPlayable = false;
 
+        if (LanMode)
+        {
+            for (int i = 0; i < Server.instance.connectedClients.Count; i++)
+            {
+                if (!Server.instance.connectedClients[i].isLocal)
+                {
+                    if (Server.instance.connectedClients[i].Player == whoWon)
+                    {
+                        Server.instance.connectedClients[i].gameService.SendWinnerMessage();
+                    }
+                    else if (Server.instance.connectedClients[i].Player == whoGotChecked)
+                    {
+                        Server.instance.connectedClients[i].gameService.SendLoserMessage();
+                    }
+                    else
+                    {
+                        Server.instance.connectedClients[i].gameService.SendNotWinNotLoseMessage();
+                    }
+                }
+            }
+
+        }
+
         UpdateGameOverText(whoWon, whoGotChecked);
 
         gameOverTextUI.gameObject.SetActive(true);
@@ -1992,18 +2069,33 @@ public class GameManager : MonoBehaviour
     {
         try
         {
-            var startingPosition = GetPieceField((BoardPosition)Decode(gsFrom));
-            var endingPosition = GetPieceField((BoardPosition)Decode(gsTo));
 
-            List<PieceField> movableFields = MovablePieceField(startingPosition);
-            if (movableFields.Contains(endingPosition))
+            var startingPosition = GetPieceField((BoardPosition)Decode(gsFrom));
+            if (startingPosition.GetPiece() != null)
             {
-                MoveAction(startingPosition, endingPosition);
-                Server.instance.connectedClients[i].gameService.SendMoveCommandSuccess();
+                if (Server.instance.connectedClients[i].Player == startingPosition.GetPiece().GetPlayerOwner())
+                {
+                    var endingPosition = GetPieceField((BoardPosition)Decode(gsTo));
+
+                    List<PieceField> movableFields = MovablePieceField(startingPosition);
+                    if (movableFields.Contains(endingPosition))
+                    {
+                        MoveAction(startingPosition, endingPosition);
+                        Server.instance.connectedClients[i].gameService.SendMoveCommandSuccess();
+                    }
+                    else
+                    {
+                        Server.instance.connectedClients[i].gameService.SendMoveCommandFailNonMovable();
+                    }
+                }
+                else
+                {
+                    Server.instance.connectedClients[i].gameService.SendMoveCommandFailNonOwner();
+                }
             }
             else
             {
-                Server.instance.connectedClients[i].gameService.SendMoveCommandFail();
+                Server.instance.connectedClients[i].gameService.SendMoveCommandErrorNoPieceInField();
             }
 
             gsFrom = "";
@@ -2011,7 +2103,10 @@ public class GameManager : MonoBehaviour
         }
         catch (Exception)
         {
-            Server.instance.connectedClients[i].gameService.SendMoveCommandError();
+            Server.instance.connectedClients[i].gameService.SendMoveCommandErrorInvalidFieldName();
+
+            gsFrom = "";
+            gsTo = "";
         };
     }
 
@@ -2041,7 +2136,7 @@ public class GameManager : MonoBehaviour
                     }
                     else
                     {
-                        Server.instance.connectedClients[i].gameService.SendMovableFieldCommandFail();
+                        Server.instance.connectedClients[i].gameService.SendMovableFieldCommandSuccessButNoMovable();
                     }
 
                     gsMovableField = "";
@@ -2059,7 +2154,7 @@ public class GameManager : MonoBehaviour
         }
         catch (Exception)
         {
-            Server.instance.connectedClients[i].gameService.SendMoveCommandError();
+            Server.instance.connectedClients[i].gameService.SendMoveCommandErrorInvalidFieldName();
         };
     }
 
@@ -2163,4 +2258,304 @@ public class GameManager : MonoBehaviour
 
         Server.instance.connectedClients[i].gameService.KingInCheck(statusMessage);
     }
+
+    // public void GameServiceVirtualMovableFieldCommand(int i)
+    // {
+
+    //     try
+    //     {
+    //         var movableField = GetPieceField((BoardPosition)Decode(gsMovableField));
+
+    //         movableFieldsList = new List<string>();
+    //         List<PieceField> movableFields = MovablePieceField(movableField);
+    //         if (movableField.GetPiece() != null)
+    //         {
+    //             if (Server.instance.connectedClients[i].Player == movableField.GetPiece().GetPlayerOwner())
+    //             {
+    //                 if (movableFields.Count > 0)
+    //                 {
+    //                     for (int j = 0; j < movableFields.Count; j++)
+    //                     {
+    //                         string pieceInfo = $"{{\"Field\": \"{movableFields[j].GetBoardPosition()}\"}}";
+    //                         movableFieldsList.Add(pieceInfo);
+    //                     }
+
+    //                     movableFieldsListJson = "[" + string.Join(",", movableFieldsList) + "]";
+
+    //                     Server.instance.connectedClients[i].gameService.SendMovableFieldCommandSuccess();
+    //                 }
+    //                 else
+    //                 {
+    //                     Server.instance.connectedClients[i].gameService.SendMovableFieldCommandSuccessButNoMovable();
+    //                 }
+
+    //                 gsMovableField = "";
+    //                 movableFieldsList = new List<string>();
+    //             }
+    //             else
+    //             {
+    //                 Server.instance.connectedClients[i].gameService.SendMovableFieldCommandFieldIsNotOwn();
+    //             }
+    //         }
+    //         else
+    //         {
+    //             Server.instance.connectedClients[i].gameService.SendMovableFieldCommandFieldIsNull();
+    //         }
+    //     }
+    //     catch (Exception)
+    //     {
+    //         Server.instance.connectedClients[i].gameService.SendMoveCommandErrorInvalidFieldName();
+    //     };
+
+    //     virtualBoard = "";
+    // }
+
+    // public List<PieceField> VirtualMovablePieceField(PieceField piece)
+    // {
+    //     List<PieceField> possibleField = new List<PieceField>();
+    //     // try
+    //     // {
+    //     if (piece.GetPiece() != null)
+    //     {
+    //         (bool isKingInCheck, List<PieceField> kingMovableField, bool isBlockable, List<PieceField> blockableField, List<PieceField> nonMovablePiece, List<PieceField> nonMovablePiece_movableField, List<Players> playerCheck) = IsKingInCheck(piece.GetPiece().GetPlayerOwner());
+
+    //         switch (piece.GetPiece().GetPieceType())
+    //         {
+    //             case PieceTypes.Pawn:
+    //                 Direction[][] PawnMoveSet = MoveSet.GetMoveSet(PieceTypes.Pawn);
+    //                 for (int i = 0; i < PawnMoveSet.Length; i++)
+    //                 {
+    //                     PieceField tempField = MoveStepCheck(piece, PawnMoveSet[i]);
+    //                     if (tempField != null)
+    //                     {
+    //                         try
+    //                         {
+    //                             if ((piece.GetRow() == 1 && i == 1 && GetPieceField(piece.GetBoardPosition() + 1).GetPiece() == null && tempField.GetPiece() == null) // Starting move is the first move in row 2 you can move 2 field
+    //                             || (i >= 2 && tempField.GetPiece() != null && tempField.GetPiece().GetPlayerOwner() != piece.GetPiece().GetPlayerOwner())) // can move diagonal when there are enemy piece in diagnoal field
+    //                             {
+    //                                 if (isKingInCheck == false ||
+    //                                 (isKingInCheck == true && isBlockable == true && blockableField.Count > 0
+    //                                 && blockableField.Contains(tempField)))
+    //                                 {
+    //                                     possibleField.Add(tempField);
+    //                                 }
+    //                             }
+    //                             else if (tempField.GetPiece() == null && i == 0)
+    //                             {
+    //                                 if (isKingInCheck == false ||
+    //                                 (isKingInCheck == true && isBlockable == true && blockableField.Count > 0
+    //                                 && blockableField.Contains(tempField)))
+    //                                 {
+    //                                     possibleField.Add(tempField);
+    //                                 }
+
+    //                             }
+    //                         }
+    //                         catch (Exception) { };
+    //                     }
+
+    //                 }
+    //                 break;
+    //             case PieceTypes.Knight:
+    //                 Direction[][] KnightMoveSet = MoveSet.GetMoveSet(PieceTypes.Knight);
+    //                 for (int i = 0; i < KnightMoveSet.Length; i++)
+    //                 {
+    //                     PieceField tempField = MoveStepCheck(piece, KnightMoveSet[i]);
+    //                     try
+    //                     {
+    //                         if ((isKingInCheck == false ||
+    //                         (isKingInCheck == true && isBlockable == true && blockableField.Count > 0
+    //                         && blockableField.Contains(tempField)))
+    //                         && (tempField.GetPiece() == null
+    //                         || (tempField.GetPiece() != null
+    //                         && tempField.GetPiece().GetPlayerOwner() != piece.GetPiece().GetPlayerOwner()))
+    //                         || (isKingInCheck == true && isBlockable == true && blockableField.Count > 0
+    //                         && blockableField.Contains(tempField)))
+    //                         {
+    //                             possibleField.Add(tempField);
+    //                         }
+    //                     }
+    //                     catch (Exception) { };
+
+    //                 }
+    //                 break;
+    //             case PieceTypes.King:
+    //                 Direction[][] KingMoveSet = MoveSet.GetMoveSet(PieceTypes.King);
+    //                 for (int i = 0; i < KingMoveSet.Length; i++)
+    //                 {
+    //                     PieceField tempField = MoveStepCheck(piece, KingMoveSet[i]);
+    //                     try
+    //                     {
+    //                         if ((tempField.GetPiece() == null || (tempField.GetPiece() != null
+    //                         && tempField.GetPiece().GetPlayerOwner() != piece.GetPiece().GetPlayerOwner()))
+    //                         && ((isKingInCheck == false && kingMovableField.Count > 0
+    //                         && kingMovableField.Contains(tempField))
+    //                         || (isKingInCheck == true && kingMovableField.Count > 0
+    //                         && kingMovableField.Contains(tempField))))
+    //                         {
+    //                             possibleField.Add(tempField);
+    //                         }
+
+    //                         if (piece.GetPiece().GetCastlable() == true && isKingInCheck == false)
+    //                         {
+    //                             if (piece.GetPiece().GetPlayerOwner() == Players.Player1 && piece.GetBoardPosition() == BoardPosition.BE1)
+    //                             {
+    //                                 if (GetPieceField(BoardPosition.BD1).GetPiece() == null && GetPieceField(BoardPosition.BC1).GetPiece() == null
+    //                                 && GetPieceField(BoardPosition.BB1).GetPiece() == null && GetPieceField(BoardPosition.BA1).GetPiece() != null
+    //                                 && GetPieceField(BoardPosition.BA1).GetPiece().GetPieceType() == PieceTypes.Rook && GetPieceField(BoardPosition.BA1).GetPiece().GetCastlable()
+    //                                 && GetPieceField(BoardPosition.BA1).GetPiece().GetPlayerOwner() == piece.GetPiece().GetPlayerOwner())
+    //                                 {
+    //                                     possibleField.Add(GetPieceField(BoardPosition.BC1));
+    //                                 }
+
+    //                                 if (GetPieceField(BoardPosition.BF1).GetPiece() == null && GetPieceField(BoardPosition.BG1).GetPiece() == null
+    //                                 && GetPieceField(BoardPosition.BH1).GetPiece() != null
+    //                                 && GetPieceField(BoardPosition.BH1).GetPiece().GetPieceType() == PieceTypes.Rook && GetPieceField(BoardPosition.BH1).GetPiece().GetCastlable()
+    //                                 && GetPieceField(BoardPosition.BA1).GetPiece().GetPlayerOwner() == piece.GetPiece().GetPlayerOwner())
+    //                                 {
+    //                                     possibleField.Add(GetPieceField(BoardPosition.BG1));
+    //                                 }
+    //                             }
+    //                             else if (piece.GetPiece().GetPlayerOwner() == Players.Player2 && piece.GetBoardPosition() == BoardPosition.GE1)
+    //                             {
+    //                                 if (GetPieceField(BoardPosition.GD1).GetPiece() == null && GetPieceField(BoardPosition.GC1).GetPiece() == null
+    //                                 && GetPieceField(BoardPosition.GB1).GetPiece() == null && GetPieceField(BoardPosition.GA1).GetPiece() != null
+    //                                 && GetPieceField(BoardPosition.GA1).GetPiece().GetPieceType() == PieceTypes.Rook && GetPieceField(BoardPosition.GA1).GetPiece().GetCastlable()
+    //                                 && GetPieceField(BoardPosition.GA1).GetPiece().GetPlayerOwner() == piece.GetPiece().GetPlayerOwner())
+    //                                 {
+    //                                     possibleField.Add(GetPieceField(BoardPosition.GC1));
+    //                                 }
+
+    //                                 if (GetPieceField(BoardPosition.GF1).GetPiece() == null && GetPieceField(BoardPosition.GG1).GetPiece() == null
+    //                                 && GetPieceField(BoardPosition.GH1).GetPiece() != null
+    //                                 && GetPieceField(BoardPosition.GH1).GetPiece().GetPieceType() == PieceTypes.Rook && GetPieceField(BoardPosition.GH1).GetPiece().GetCastlable()
+    //                                 && GetPieceField(BoardPosition.GA1).GetPiece().GetPlayerOwner() == piece.GetPiece().GetPlayerOwner())
+    //                                 {
+    //                                     possibleField.Add(GetPieceField(BoardPosition.GG1));
+    //                                 }
+    //                             }
+    //                             else if (piece.GetPiece().GetPlayerOwner() == Players.Player3 && piece.GetBoardPosition() == BoardPosition.RE1)
+    //                             {
+    //                                 if (GetPieceField(BoardPosition.RD1).GetPiece() == null && GetPieceField(BoardPosition.RC1).GetPiece() == null
+    //                                 && GetPieceField(BoardPosition.RB1).GetPiece() == null && GetPieceField(BoardPosition.RA1).GetPiece() != null
+    //                                 && GetPieceField(BoardPosition.RA1).GetPiece().GetPieceType() == PieceTypes.Rook && GetPieceField(BoardPosition.RA1).GetPiece().GetCastlable()
+    //                                 && GetPieceField(BoardPosition.RA1).GetPiece().GetPlayerOwner() == piece.GetPiece().GetPlayerOwner())
+    //                                 {
+    //                                     possibleField.Add(GetPieceField(BoardPosition.RC1));
+    //                                 }
+
+    //                                 if (GetPieceField(BoardPosition.RF1).GetPiece() == null && GetPieceField(BoardPosition.RG1).GetPiece() == null
+    //                                 && GetPieceField(BoardPosition.RH1).GetPiece() != null
+    //                                 && GetPieceField(BoardPosition.RH1).GetPiece().GetPieceType() == PieceTypes.Rook && GetPieceField(BoardPosition.RH1).GetPiece().GetCastlable()
+    //                                 && GetPieceField(BoardPosition.RA1).GetPiece().GetPlayerOwner() == piece.GetPiece().GetPlayerOwner())
+    //                                 {
+    //                                     possibleField.Add(GetPieceField(BoardPosition.RG1));
+    //                                 }
+    //                             }
+    //                         }
+    //                     }
+    //                     catch (Exception) { };
+
+    //                 }
+    //                 break;
+    //             default:
+    //                 Direction[][] LineMoveSet = MoveSet.GetMoveSet(piece.GetPiece().GetPieceType());
+
+    //                 for (int i = 0; i < LineMoveSet.Length; i++)
+    //                 {
+    //                     bool onLoop = true;
+
+    //                     PieceField tempField = piece;
+    //                     Players originalColor = tempField.GetPiece().GetPlayerOwner();
+
+    //                     Direction[] moveDirection = LineMoveSet[i];
+
+    //                     bool reverse = false;
+
+    //                     while (onLoop == true)
+    //                     {
+    //                         PieceField oldTempField = tempField;
+
+    //                         tempField = MoveStepCheck(tempField, moveDirection, reverse, originalColor);
+
+    //                         if (tempField != null && oldTempField.GetColor() != tempField.GetColor())
+    //                         {
+    //                             reverse = true;
+    //                         }
+
+    //                         if (tempField == null)
+    //                         {
+    //                             break;
+    //                         }
+    //                         else
+    //                         {
+    //                             try
+    //                             {
+    //                                 if (tempField.GetPiece() == null || (tempField.GetPiece() != null && tempField.GetPiece().GetPlayerOwner() != piece.GetPiece().GetPlayerOwner()))
+    //                                 {
+    //                                     if ((isKingInCheck == false ||
+    //                                     (isKingInCheck == true && isBlockable == true && blockableField.Count > 0
+    //                                     && blockableField.Contains(tempField)))
+    //                                     && (tempField.GetPiece() == null
+    //                                     || (tempField.GetPiece() != null
+    //                                     && tempField.GetPiece().GetPlayerOwner() != piece.GetPiece().GetPlayerOwner()))
+    //                                     || (isKingInCheck == true && isBlockable == true && blockableField.Count > 0
+    //                                     && blockableField.Contains(tempField)))
+    //                                     {
+    //                                         possibleField.Add(tempField);
+    //                                         if (tempField.GetPiece() != null
+    //                                         && tempField.GetPiece().GetPlayerOwner() != piece.GetPiece().GetPlayerOwner())
+    //                                         {
+    //                                             break;
+    //                                         }
+
+    //                                     }
+    //                                 }
+    //                                 else if (tempField != null && tempField.GetPiece().GetPlayerOwner() == piece.GetPiece().GetPlayerOwner())
+    //                                 {
+    //                                     break;
+    //                                 }
+    //                                 else if (possibleField[possibleField.Count - 1] != null)
+    //                                 {
+    //                                     break;
+    //                                 }
+    //                             }
+    //                             catch (Exception) { };
+    //                         }
+    //                     }
+
+
+    //                 }
+    //                 break;
+    //         }
+    //         if (nonMovablePiece.Contains(piece))
+    //         {
+    //             List<PieceField> dupPossibleField = new List<PieceField>();
+    //             dupPossibleField.AddRange(possibleField);
+    //             List<PieceField> tempPossibleField = new List<PieceField>();
+
+    //             for (int i = 0; i < dupPossibleField.Count; i++)
+    //             {
+    //                 if (nonMovablePiece_movableField.Contains(dupPossibleField[i]))
+    //                 {
+    //                     tempPossibleField.Add(dupPossibleField[i]);
+    //                 }
+    //             }
+
+    //             if (tempPossibleField.Count > 0)
+    //             {
+    //                 possibleField = new List<PieceField>();
+    //                 possibleField.AddRange(tempPossibleField);
+    //             }
+    //             else
+    //             {
+    //                 return new List<PieceField>();
+    //             }
+
+    //         }
+    //     }
+
+    //     return possibleField;
+    // }
+
 }

@@ -1036,6 +1036,97 @@ public class GameService : WebSocketBehavior
                     }
                 }
             }
+            else if (commandMessage.Command.ToLower() == "virtualboard" && GameManager.instance.gameStarted)
+            {
+                if (string.IsNullOrEmpty(commandMessage.VirtualBoard.ToLower()))
+                {
+                    statusMessage = new StatusMessage
+                    {
+                        Status = "Error",
+                        Message = "You're need to send virtual board too. ",
+                        Player = "",
+                        Password = "",
+                        YourTurn = null,
+                        Board = "",
+                        MovableFields = "",
+                        NeedPromotion = "",
+
+                        KingInCheck = null,
+                        KingMovableField = "",
+                        Blockable = null,
+                        BlockableField = "",
+                        WhoChecked = ""
+                    };
+                }
+                else
+                {
+                    bool foundPassword = false;
+
+                    for (int i = 0; i < Server.instance.connectedClients.Count; i++)
+                    {
+                        if (Server.instance.connectedClients[i].Password == commandMessage.Password.ToString())
+                        {
+                            if (GameManager.instance.currentPastTurn == 0)
+                            {
+                                // GameManager.instance.virtualBoard = commandMessage.VirtualBoard;
+
+                                MainThreadDispatcher.instance.RunOnMainThread(() =>
+                                {
+
+                                });
+
+                                foundPassword = true;
+                                toggleCustomJson = true;
+                                break;
+                            }
+                            else
+                            {
+                                statusMessage = new StatusMessage
+                                {
+                                    Status = "Fail",
+                                    Message = "It not in current turn. The game is watch back in past turn. ",
+                                    Player = "",
+                                    Password = "",
+                                    YourTurn = false,
+                                    Board = "",
+                                    MovableFields = "",
+                                    NeedPromotion = "",
+
+                                    KingInCheck = null,
+                                    KingMovableField = "",
+                                    Blockable = null,
+                                    BlockableField = "",
+                                    WhoChecked = ""
+                                };
+                                foundPassword = true;
+                                break;
+                            }
+                        }
+
+                    }
+
+                    if (!foundPassword)
+                    {
+                        statusMessage = new StatusMessage
+                        {
+                            Status = "Error",
+                            Message = "You're not the player in this game. ",
+                            Player = "",
+                            Password = "",
+                            YourTurn = null,
+                            Board = "",
+                            MovableFields = "",
+                            NeedPromotion = "",
+
+                            KingInCheck = null,
+                            KingMovableField = "",
+                            Blockable = null,
+                            BlockableField = "",
+                            WhoChecked = ""
+                        };
+                    }
+                }
+            }
             else
             {
                 statusMessage = new StatusMessage
@@ -1197,7 +1288,7 @@ public class GameService : WebSocketBehavior
         Send(json);
     }
 
-    public void SendMoveCommandFail()
+    public void SendMoveCommandFailNonMovable()
     {
         StatusMessage statusMessage = new StatusMessage
         {
@@ -1222,12 +1313,61 @@ public class GameService : WebSocketBehavior
     }
 
 
-    public void SendMoveCommandError()
+    public void SendMoveCommandFailNonOwner()
+    {
+        StatusMessage statusMessage = new StatusMessage
+        {
+            Status = "Fail",
+            Message = "That piece is not your piece. ",
+            Player = "",
+            Password = "",
+            YourTurn = null,
+            Board = "",
+            MovableFields = "",
+            NeedPromotion = "",
+
+            KingInCheck = null,
+            KingMovableField = "",
+            Blockable = null,
+            BlockableField = "",
+            WhoChecked = ""
+        };
+        string json = statusMessage.ToJsonString();
+
+        Send(json);
+    }
+
+
+    public void SendMoveCommandErrorInvalidFieldName()
     {
         StatusMessage statusMessage = new StatusMessage
         {
             Status = "Error",
             Message = "Invalid field name. ",
+            Player = "",
+            Password = "",
+            YourTurn = null,
+            Board = "",
+            MovableFields = "",
+            NeedPromotion = "",
+
+            KingInCheck = null,
+            KingMovableField = "",
+            Blockable = null,
+            BlockableField = "",
+            WhoChecked = ""
+        };
+        string json = statusMessage.ToJsonString();
+
+        Send(json);
+    }
+
+    public void SendMoveCommandErrorNoPieceInField()
+    {
+        StatusMessage statusMessage = new StatusMessage
+        {
+            Status = "Error",
+            Message = "There is no piece in that field. ",
             Player = "",
             Password = "",
             YourTurn = null,
@@ -1270,11 +1410,11 @@ public class GameService : WebSocketBehavior
         Send(json);
     }
 
-    public void SendMovableFieldCommandFail()
+    public void SendMovableFieldCommandSuccessButNoMovable()
     {
         StatusMessage statusMessage = new StatusMessage
         {
-            Status = "Fail",
+            Status = "Success",
             Message = "There're no movable field for your piece. ",
             Player = "",
             Password = "",
@@ -1369,5 +1509,77 @@ public class GameService : WebSocketBehavior
     public void KingInCheck(StatusMessage statusMessage)
     {
         Send(statusMessage.ToJsonString());
+    }
+
+    public void SendWinnerMessage()
+    {
+        StatusMessage statusMessage = new StatusMessage
+        {
+            Status = "GameEnd",
+            Message = "The game is ended, You're the winner. ",
+            Player = "",
+            Password = "",
+            YourTurn = null,
+            Board = "",
+            MovableFields = "",
+            NeedPromotion = "",
+
+            KingInCheck = null,
+            KingMovableField = "",
+            Blockable = null,
+            BlockableField = "",
+            WhoChecked = ""
+        };
+        string json = statusMessage.ToJsonString();
+
+        Send(json);
+    }
+
+    public void SendLoserMessage()
+    {
+        StatusMessage statusMessage = new StatusMessage
+        {
+            Status = "GameEnd",
+            Message = "The game is ended, You're defeated. ",
+            Player = "",
+            Password = "",
+            YourTurn = null,
+            Board = "",
+            MovableFields = "",
+            NeedPromotion = "",
+
+            KingInCheck = null,
+            KingMovableField = "",
+            Blockable = null,
+            BlockableField = "",
+            WhoChecked = ""
+        };
+        string json = statusMessage.ToJsonString();
+
+        Send(json);
+    }
+
+    public void SendNotWinNotLoseMessage()
+    {
+        StatusMessage statusMessage = new StatusMessage
+        {
+            Status = "GameEnd",
+            Message = "The game is ended, You aren't win either lose. ",
+            Player = "",
+            Password = "",
+            YourTurn = null,
+            Board = "",
+            MovableFields = "",
+            NeedPromotion = "",
+
+            KingInCheck = null,
+            KingMovableField = "",
+            Blockable = null,
+            BlockableField = "",
+            WhoChecked = ""
+        };
+        string json = statusMessage.ToJsonString();
+
+        Send(json);
     }
 }
