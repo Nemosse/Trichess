@@ -64,8 +64,6 @@ public class GameManager : MonoBehaviour
     private Players promotePawnColor;
     private PieceField pawnPromotePieceField = null;
 
-
-
     private float startTime;
     private static bool isFadingIn = false;
     private static bool isFadingOut = false;
@@ -2075,18 +2073,33 @@ public class GameManager : MonoBehaviour
             {
                 if (Server.instance.connectedClients[i].Player == startingPosition.GetPiece().GetPlayerOwner())
                 {
-                    var endingPosition = GetPieceField((BoardPosition)Decode(gsTo));
-
-                    List<PieceField> movableFields = MovablePieceField(startingPosition);
-                    if (movableFields.Contains(endingPosition))
+                    if (pawnPromoteActive)
                     {
-                        MoveAction(startingPosition, endingPosition);
-                        Server.instance.connectedClients[i].gameService.SendMoveCommandSuccess();
+                        if (Server.instance.connectedClients[i].Player == currentTurnPlayer)
+                        {
+                            Server.instance.connectedClients[i].gameService.SendMoveCommandFailOnTurnWhilePromotion();
+                        }
+                        else
+                        {
+                            Server.instance.connectedClients[i].gameService.SendMoveCommandFailOffTurnWhilePromotion();
+                        }
                     }
                     else
                     {
-                        Server.instance.connectedClients[i].gameService.SendMoveCommandFailNonMovable();
+                        var endingPosition = GetPieceField((BoardPosition)Decode(gsTo));
+
+                        List<PieceField> movableFields = MovablePieceField(startingPosition);
+                        if (movableFields.Contains(endingPosition))
+                        {
+                            MoveAction(startingPosition, endingPosition);
+                            Server.instance.connectedClients[i].gameService.SendMoveCommandSuccess();
+                        }
+                        else
+                        {
+                            Server.instance.connectedClients[i].gameService.SendMoveCommandFailNonMovable();
+                        }
                     }
+
                 }
                 else
                 {
@@ -2120,32 +2133,27 @@ public class GameManager : MonoBehaviour
             List<PieceField> movableFields = MovablePieceField(movableField);
             if (movableField.GetPiece() != null)
             {
-                if (Server.instance.connectedClients[i].Player == movableField.GetPiece().GetPlayerOwner())
+
+                if (movableFields.Count > 0)
                 {
-                    if (movableFields.Count > 0)
+                    for (int j = 0; j < movableFields.Count; j++)
                     {
-                        for (int j = 0; j < movableFields.Count; j++)
-                        {
-                            string pieceInfo = $"{{\"Field\": \"{movableFields[j].GetBoardPosition()}\"}}";
-                            movableFieldsList.Add(pieceInfo);
-                        }
-
-                        movableFieldsListJson = "[" + string.Join(",", movableFieldsList) + "]";
-
-                        Server.instance.connectedClients[i].gameService.SendMovableFieldCommandSuccess();
-                    }
-                    else
-                    {
-                        Server.instance.connectedClients[i].gameService.SendMovableFieldCommandSuccessButNoMovable();
+                        string pieceInfo = $"{{\"Field\": \"{movableFields[j].GetBoardPosition()}\"}}";
+                        movableFieldsList.Add(pieceInfo);
                     }
 
-                    gsMovableField = "";
-                    movableFieldsList = new List<string>();
+                    movableFieldsListJson = "[" + string.Join(",", movableFieldsList) + "]";
+
+                    Server.instance.connectedClients[i].gameService.SendMovableFieldCommandSuccess();
                 }
                 else
                 {
-                    Server.instance.connectedClients[i].gameService.SendMovableFieldCommandFieldIsNotOwn();
+                    Server.instance.connectedClients[i].gameService.SendMovableFieldCommandSuccessButNoMovable();
                 }
+
+                gsMovableField = "";
+                movableFieldsList = new List<string>();
+
             }
             else
             {

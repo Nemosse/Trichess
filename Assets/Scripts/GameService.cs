@@ -1410,6 +1410,54 @@ public class GameService : WebSocketBehavior
         Send(json);
     }
 
+    public void SendMoveCommandFailOnTurnWhilePromotion()
+    {
+        StatusMessage statusMessage = new StatusMessage
+        {
+            Status = "Fail",
+            Message = "You're currently on promoting a pawn! ",
+            Player = "",
+            Password = "",
+            YourTurn = null,
+            Board = "",
+            MovableFields = "",
+            NeedPromotion = "",
+
+            KingInCheck = null,
+            KingMovableField = "",
+            Blockable = null,
+            BlockableField = "",
+            WhoChecked = ""
+        };
+        string json = statusMessage.ToJsonString();
+
+        Send(json);
+    }
+
+    public void SendMoveCommandFailOffTurnWhilePromotion()
+    {
+        StatusMessage statusMessage = new StatusMessage
+        {
+            Status = "Fail",
+            Message = "Other player currently on promoting a pawn! ",
+            Player = "",
+            Password = "",
+            YourTurn = null,
+            Board = "",
+            MovableFields = "",
+            NeedPromotion = "",
+
+            KingInCheck = null,
+            KingMovableField = "",
+            Blockable = null,
+            BlockableField = "",
+            WhoChecked = ""
+        };
+        string json = statusMessage.ToJsonString();
+
+        Send(json);
+    }
+
     public void SendMovableFieldCommandSuccessButNoMovable()
     {
         StatusMessage statusMessage = new StatusMessage
@@ -1458,29 +1506,29 @@ public class GameService : WebSocketBehavior
         Send(json);
     }
 
-    public void SendMovableFieldCommandFieldIsNotOwn()
-    {
-        StatusMessage statusMessage = new StatusMessage
-        {
-            Status = "Fail",
-            Message = "That piece in the field is yours. ",
-            Player = "",
-            Password = "",
-            YourTurn = null,
-            Board = "",
-            MovableFields = "",
-            NeedPromotion = "",
+    // public void SendMovableFieldCommandFieldIsNotOwn()
+    // {
+    //     StatusMessage statusMessage = new StatusMessage
+    //     {
+    //         Status = "Fail",
+    //         Message = "That piece in the field is yours. ",
+    //         Player = "",
+    //         Password = "",
+    //         YourTurn = null,
+    //         Board = "",
+    //         MovableFields = "",
+    //         NeedPromotion = "",
 
-            KingInCheck = null,
-            KingMovableField = "",
-            Blockable = null,
-            BlockableField = "",
-            WhoChecked = ""
-        };
-        string json = statusMessage.ToJsonString();
+    //         KingInCheck = null,
+    //         KingMovableField = "",
+    //         Blockable = null,
+    //         BlockableField = "",
+    //         WhoChecked = ""
+    //     };
+    //     string json = statusMessage.ToJsonString();
 
-        Send(json);
-    }
+    //     Send(json);
+    // }
 
     public void BroadcastGameStart()
     {
